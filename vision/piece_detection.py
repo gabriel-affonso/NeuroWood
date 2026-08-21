@@ -141,7 +141,7 @@ def measure_piece_width(
         ).astype(np.float32)
         profile = cv2.GaussianBlur(
             profile[:, None],
-            (1, 15),
+            (1, 5),
             0,
         ).ravel()
 
