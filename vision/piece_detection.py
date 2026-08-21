@@ -135,15 +135,12 @@ def measure_piece_width(
         x1 = max(0, x - band)
         x2 = min(w, x + band + 1)
 
+        # A mediana da faixa horizontal já reduz ruído sem deslocar as bordas
+        # verticais; por isso não há blur vertical nesta etapa de metrologia.
         profile = np.median(
             gray[:, x1:x2],
             axis=1,
         ).astype(np.float32)
-        profile = cv2.GaussianBlur(
-            profile[:, None],
-            (1, 5),
-            0,
-        ).ravel()
 
         # Fundo fixo: faixas da esteira que ficam fora da região da tábua.
         background_samples = np.concatenate([
@@ -155,7 +152,7 @@ def measure_piece_width(
         difference = np.abs(profile - background)
         wood_mask = difference >= float(min_contrast)
 
-        # Fecha pequenos buracos no perfil sem deslocar significativamente as bordas.
+        # Fecha pequenos buracos no perfil sem alterar a posição das bordas.
         mask_image = (wood_mask.astype(np.uint8) * 255)[:, None]
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 5))
         mask_image = cv2.morphologyEx(mask_image, cv2.MORPH_CLOSE, kernel)
