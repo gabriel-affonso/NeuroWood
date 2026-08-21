@@ -7,7 +7,7 @@ from datetime import datetime
 from core.models import BoardResult, Defect
 from vision.capture import capture_piece_frames
 from vision.defects import detect_texture_defects
-from vision.piece_detection import detect_piece
+from vision.piece_detection import detect_piece, measure_piece_width
 from vision.reconstruction import reconstruct_board
 
 logger = logging.getLogger(__name__)
@@ -74,13 +74,15 @@ class NeuroWoodPipeline:
         first_frame = self.camera.capture()
         self.last_first_frame = first_frame
 
+        piece_min_contrast = _cfg(
+            self.config,
+            "vision.piece_min_contrast",
+            25,
+        )
+
         present, piece_info = detect_piece(
             first_frame,
-            min_contrast=_cfg(
-                self.config,
-                "vision.piece_min_contrast",
-                25,
-            ),
+            min_contrast=piece_min_contrast,
             min_height_frac=_cfg(
                 self.config,
                 "vision.piece_min_height_frac",
@@ -124,6 +126,33 @@ class NeuroWoodPipeline:
         )
         self.last_piece_frames = piece_frames
         logger.info("CAPTURE_COMPLETE")
+
+        # A largura é medida somente no primeiro frame da sequência de captura.
+        # São usados 5 pontos horizontais e a calibração solicitada de 2 px = 1 mm.
+        if piece_frames:
+            width_info = measure_piece_width(
+                piece_frames[0]["frame"],
+                pixels_per_mm=2.0,
+                n_points=5,
+                min_contrast=piece_min_contrast,
+            )
+            piece_info.update(width_info)
+            piece_info["width_measurement_frame_id"] = piece_frames[0]["frame_id"]
+            self.last_piece_info = piece_info
+
+            if width_info["width_valid"]:
+                logger.info(
+                    "BOARD_WIDTH width_mm=%.2f width_px=%.1f samples_mm=%s frame_id=%s",
+                    width_info["width_mm"],
+                    width_info["width_px"],
+                    [round(v, 2) for v in width_info["width_samples_mm"]],
+                    piece_frames[0]["frame_id"],
+                )
+            else:
+                logger.warning(
+                    "BOARD_WIDTH_NOT_MEASURED frame_id=%s",
+                    piece_frames[0]["frame_id"],
+                )
 
         detection_results, summary = detect_texture_defects(
             piece_frames,
